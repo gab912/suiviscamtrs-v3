@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Suivi flotte camions</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="v3-pro-shell">
+<div class="v3-app"><header class="v3-header">
+  <div>
+    <h1>Suivi flotte camions</h1>
+    <p>Application locale — sans Excel, sans internet, avec sauvegarde locale</p>
+  </div>
+  <div class="actions">
+    <button onclick="exportBackup()">Exporter sauvegarde</button>
+    <label class="button">Importer sauvegarde<input type="file" accept=".json" onchange="importBackup(event)"></label>
+    <button class="danger" onclick="resetApp()">Réinitialiser</button>
+  </div>
+</header>
+
+<div class="v3-layout"><aside class="v3-sidebar"><div class="v3-brand-small">Navigation</div><nav>
+  <button class="tab active" onclick="showTab(event,'dashboard')">Tableau de bord</button>
+  <button class="tab" onclick="showTab(event,'vehicles')">Camions</button>
+  <button class="tab" onclick="showTab(event,'maintenance')">Entretiens</button>
+  <button class="tab" onclick="showTab(event,'stock')">Stock pièces</button>
+  <button class="tab" onclick="showTab(event,'fuel')">Gasoil / AdBlue</button>
+  <button class="tab" onclick="showTab(event,'reports')">Bilans conso</button>
+  <button class="tab" onclick="showTab(event,'alerts')">Alertes</button>
+</nav></aside>
+
+<main class="v3-main">
+<section id="dashboard" class="panel active">
+  <h2>Tableau de bord</h2>
+  <div class="cards" id="cards"></div>
+  <div class="notice"><b>Sauvegarde :</b> clique régulièrement sur “Exporter sauvegarde” et garde le fichier sur clé USB, disque externe ou cloud.</div>
+  <h3>Alertes importantes</h3>
+  <div id="dashboardAlerts"></div>
+</section>
+
+<section id="vehicles" class="panel">
+  <h2>Parc camions</h2>
+  <form id="vehicleForm" class="gridform">
+    <input name="plate" placeholder="Plaque" required>
+    <input name="brand" placeholder="Marque">
+    <input name="model" placeholder="Modèle">
+    <input name="year" placeholder="Année">
+    <input name="km" type="number" placeholder="Km actuel">
+    <input name="lastServiceDate" type="date" title="Date dernier entretien">
+    <input name="lastServiceKm" type="number" placeholder="Km dernier entretien">
+    <input name="nextServiceDate" type="date" title="Date prochain entretien">
+    <input name="nextServiceKm" type="number" placeholder="Km prochaine vidange">
+    <input name="ctDate" type="date" title="Expiration contrôle technique">
+    <input name="insuranceDate" type="date" title="Expiration assurance">
+    <select name="status"><option>Actif</option><option>Immobilisé</option><option>HS</option></select>
+    <input name="targetConso" type="number" step="0.01" placeholder="Conso max L/100">
+    <input name="comment" class="wide" placeholder="Commentaire camion">
+    <button type="submit" id="vehicleSubmitBtn">Ajouter / modifier camion</button>
+    <button type="button" class="secondary" onclick="cancelVehicleEdit()">Annuler modification</button>
+  </form>
+  <div class="tablewrap"><table id="vehiclesTable"></table></div>
+</section>
+
+<section id="maintenance" class="panel">
+  <h2>Historique entretiens</h2>
+  <form id="maintenanceForm" class="gridform">
+    <input type="hidden" name="id">
+    <input name="date" type="date" required>
+    <select name="plate" required></select>
+    <input name="km" type="number" placeholder="Kilométrage">
+    <select name="type">
+      <option>Vidange</option><option>Plaquettes AV</option><option>Plaquettes AR</option>
+      <option>Disques</option><option>Filtres</option><option>Contrôle technique</option>
+      <option>Réparation</option><option>Autre</option>
+    </select>
+    <input name="description" placeholder="Description">
+    <input name="costHT" type="number" step="0.01" placeholder="Coût HT">
+    <input name="costTTC" type="number" step="0.01" placeholder="Coût TTC">
+    <input name="invoice" placeholder="N° facture">
+    <input name="nextDate" type="date" title="Date prochain entretien">
+    <input name="nextKm" type="number" placeholder="Km prochaine vidange">
+    <input name="comment" placeholder="Commentaire">
+    <div class="multi-pieces">
+      <div class="multi-title">
+        <b>Pièces utilisées</b>
+        <button type="button" onclick="addMaintenancePiece()">+ Ajouter une pièce</button>
+      </div>
+      <p class="hint">Exemple : ajoute “Disque de frein AV” + quantité, puis “Plaquettes de frein AV” + quantité. Tout sera décompté du stock.</p>
+      <div id="maintenancePieces"></div>
+    </div>
+    <button type="submit" id="maintenanceSubmitBtn">Ajouter entretien</button>
+    <button type="button" class="secondary" onclick="cancelMaintenanceEdit()">Annuler modification</button>
+  </form>
+  <div class="box" id="maintenanceFilters">
+    <h3>Recherche entretiens</h3>
+    <form class="gridform compact" onsubmit="return false">
+      <input id="maintFilterPlate" placeholder="Filtrer par plaque ex: 705 ou GX-705-VR" oninput="renderMaintenance()">
+      <input id="maintFilterDate" type="date" onchange="renderMaintenance()">
+      <select id="maintFilterType" onchange="renderMaintenance()">
+        <option value="">Tous les types</option>
+        <option>Vidange</option><option>Plaquettes AV</option><option>Plaquettes AR</option><option>Disques</option><option>Filtres</option><option>Contrôle technique</option><option>Réparation</option><option>Autre</option>
+      </select>
+      <button type="button" onclick="clearMaintenanceFilters()">Réinitialiser filtres</button>
+    </form>
+  </div>
+  <div class="tablewrap"><table id="maintenanceTable"></table></div>
+</section>
+
+<section id="stock" class="panel">
+  <h2>Inventaire pièces</h2>
+  <div class="box">
+    <h3>Réception stock</h3>
+    <form id="stockReceiveForm" class="gridform compact">
+      <select name="name" required></select>
+      <input name="addQty" type="number" step="0.01" placeholder="Quantité reçue" required>
+      <input name="comment" placeholder="Commentaire / fournisseur">
+      <button type="submit">Ajouter au stock</button>
+    </form>
+  </div>
+  <div class="box">
+    <h3>Créer ou modifier une pièce</h3>
+    <form id="stockForm" class="gridform compact">
+      <input name="name" placeholder="Pièce" required>
+      <input name="qty" type="number" step="0.01" placeholder="Stock actuel" required>
+      <input name="min" type="number" step="0.01" placeholder="Stock minimum">
+      <input name="unit" placeholder="Unité ex: L, jeu, pièce">
+      <button type="submit" id="stockSubmitBtn">Enregistrer la pièce</button>
+      <button type="button" class="secondary" onclick="cancelStockEdit()">Annuler modification</button>
+    </form>
+  </div>
+  <div class="tablewrap"><table id="stockTable"></table></div>
+</section>
+
+<section id="fuel" class="panel">
+  <h2>Saisie gasoil / AdBlue</h2>
+  <p class="hint">Chaque saisie est conservée. Pour 2 pleins de gasoil dans la journée, remplis Ticket 1 et Ticket 2 sur la même ligne.</p>
+  <form id="fuelForm" class="gridform">
+    <input type="hidden" name="id">
+    <input name="date" type="date" required>
+    <input id="plateSearchFuel" placeholder="Recherche plaque ex: 705, GX ou GX-705-VR">
+    <select name="plate" required></select>
+    <select name="type"><option>Gasoil</option><option>AdBlue</option></select>
+    <input name="kmStart" type="number" placeholder="Km début jour">
+    <input name="kmEnd" type="number" placeholder="Km fin jour">
+    <input name="liters1" type="number" step="0.01" placeholder="Ticket 1 litres">
+    <input name="cost1" type="number" step="0.01" placeholder="Ticket 1 € TTC">
+    <input name="liters2" type="number" step="0.01" placeholder="Ticket 2 litres">
+    <input name="cost2" type="number" step="0.01" placeholder="Ticket 2 € TTC">
+    <input name="comment" placeholder="Commentaire">
+    <button type="submit" id="fuelSubmitBtn">Ajouter ticket</button>
+    <button type="button" class="secondary" onclick="cancelFuelEdit()">Annuler modification</button>
+  </form>
+  <div class="tablewrap"><table id="fuelTable"></table></div>
+</section>
+
+<section id="reports" class="panel">
+  <h2>Bilans consommation</h2>
+  <div class="box">
+    <form class="gridform compact" onsubmit="return false">
+      <input id="reportStartDate" type="date" onchange="renderReports()" title="Date début">
+      <input id="reportEndDate" type="date" onchange="renderReports()" title="Date fin">
+      <select id="reportPeriod" onchange="renderReports()"><option value="day">Bilan journalier</option><option value="week">Bilan semaine</option><option value="month">Bilan mensuel</option><option value="year">Bilan annuel</option></select>
+      <select id="reportPlate" onchange="renderReports()"><option value="">Tous les camions</option></select>
+      <select id="reportSort" onchange="renderReports()"><option value="period_desc">Tri période récente</option><option value="conso_desc">Conso du + au -</option><option value="conso_asc">Conso du - au +</option><option value="cost_desc">Coût total du + au -</option></select>
+      <label class="checkline"><input id="reportOnlyOver" type="checkbox" onchange="renderReports()"> Seulement surconsommation</label>
+      <button onclick="exportReportCSV()">Exporter bilan CSV</button>
+    </form>
+  </div>
+  <div class="cards" id="reportCards"></div>
+  <div class="tablewrap"><table id="reportTable"></table></div>
+</section>
+
+
+<section id="problems" class="tab">
+  <h2>Problèmes camions</h2>
+  <p class="hint">Suivi des problèmes actuellement ouverts et historique des problèmes réparés.</p>
+
+  <div class="pro-kpi-grid" id="problemKpis"></div>
+
+  <div class="box">
+    <h3>Ajouter / modifier un problème</h3>
+    <form id="problemForm" class="gridform">
+      <input type="hidden" name="id">
+      <input name="date" type="date" required>
+      <select name="plate" required></select>
+      <select name="priority" required>
+        <option>Faible</option>
+        <option>À surveiller</option>
+        <option>Urgent</option>
+        <option>Immobilisant</option>
+      </select>
+      <select name="status" required>
+        <option>Ouvert</option>
+        <option>En cours</option>
+        <option>Réparé</option>
+      </select>
+      <input name="title" placeholder="Titre du problème ex: voyant moteur, pneu, fuite..." required>
+      <textarea name="description" class="wide" placeholder="Description du problème"></textarea>
+      <input name="reportedBy" placeholder="Signalé par">
+      <input name="repairDate" type="date" title="Date de réparation">
+      <textarea name="repairComment" class="wide" placeholder="Commentaire réparation / action effectuée"></textarea>
+      <button type="submit" id="problemSubmitBtn">Ajouter problème</button>
+      <button type="button" onclick="cancelProblemEdit()">Annuler</button>
+    </form>
+  </div>
+
+  <div class="box">
+    <h3>Filtres</h3>
+    <form class="gridform compact" onsubmit="return false">
+      <input id="problemFilterPlate" placeholder="Filtrer par plaque ex: 705" oninput="renderProblems()">
+      <select id="problemFilterStatus" onchange="renderProblems()">
+        <option value="">Tous les statuts</option>
+        <option>Ouvert</option>
+        <option>En cours</option>
+        <option>Réparé</option>
+      </select>
+      <select id="problemFilterPriority" onchange="renderProblems()">
+        <option value="">Toutes les priorités</option>
+        <option>Faible</option>
+        <option>À surveiller</option>
+        <option>Urgent</option>
+        <option>Immobilisant</option>
+      </select>
+      <button type="button" onclick="clearProblemFilters()">Réinitialiser</button>
+    </form>
+  </div>
+
+  <div class="tablewrap"><table id="problemsTable"></table></div>
+</section>
+
+<section id="alerts" class="panel">
+  <h2>Alertes</h2>
+  <div class="notice">Les alertes kilométriques concernent uniquement les <b>vidanges</b>, à partir de 2 000 km avant le kilométrage de prochaine vidange.</div>
+  <div id="alertsList"></div>
+</section>
+</main></div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
+
+<!-- V3_LOGICIEL_PRO -->
